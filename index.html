@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>필라멘트 재고 현황</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+/* 관리 현황과 같은 공방 벽판. 이 페이지의 주인공은 선반 위 스풀. */
+:root{
+  --board:#E6EAED; --board-dot:#D5DBE0; --ink:#1E2932; --muted:#5F6B75; --faint:#8A949C; --line:#C9D0D6;
+  --plank:#B4BDC5; --plank-edge:#9AA4AD; --panel:#FFFFFF; --panel-line:#E3E7EA;
+  --accent:#2A5D8A; --accent-ink:#fff; --accent-soft:#E4ECF4;
+  --warn:#A86B12; --warn-bg:#FCEFD6; --empty:#C23A31; --empty-bg:#F8DEDA; --ok:#23683F; --ok-bg:#E2F1E7;
+  --lv-high:#2E9E5B; --lv-mid:#E8B21A; --lv-low:#D2433A;
+  --r-s:6px; --r-m:12px;
+  font-family:Pretendard,"Malgun Gothic",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);background:var(--board);
+  background-image:radial-gradient(var(--board-dot) 1.4px,transparent 1.5px);background-size:22px 22px;
+  font-size:15px;line-height:1.5;font-variant-numeric:tabular-nums}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--accent)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+.top{position:sticky;top:0;z-index:5;background:rgba(230,234,237,.94);backdrop-filter:blur(6px);border-bottom:1px solid var(--line)}
+.top-in{max-width:1280px;margin:0 auto;padding:16px 28px 12px;display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center}
+h1{margin:0;font-size:26px;font-weight:800;letter-spacing:-.02em}
+.updated{color:var(--muted);font-size:14px}
+.nav{margin-left:auto;display:flex;background:#D7DDE2;border-radius:999px;padding:3px}
+.nav a{padding:6px 16px;border-radius:999px;text-decoration:none;color:var(--ink);font-weight:600;font-size:14px}
+.nav a[aria-current=page]{background:var(--panel);box-shadow:0 1px 2px rgba(30,41,50,.18)}
+.tools{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:var(--r-s);padding:7px 14px;cursor:pointer;font-weight:600}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.danger{color:var(--empty);border-color:#E3B5AF}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:4px 12px;cursor:pointer;font-size:14px}
+.chip[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff}
+.chip .n{font-weight:700;margin-left:4px}
+.search{border:1px solid var(--line);border-radius:999px;padding:5px 14px;width:170px;background:var(--panel)}
+.view{display:flex;border:1px solid var(--line);border-radius:var(--r-s);overflow:hidden;margin-left:auto}
+.view button{border:0;background:var(--panel);padding:6px 14px;cursor:pointer;font-weight:600;font-size:14px;color:var(--muted)}
+.view button+button{border-left:1px solid var(--line)}
+.view button[aria-pressed=true]{background:var(--ink);color:#fff}
+
+.layout{max-width:1280px;margin:0 auto;padding:22px 28px 60px;display:grid;grid-template-columns:184px minmax(0,1fr);gap:28px}
+main{min-width:0}
+.shelf,.qt tr.group{scroll-margin-top:calc(var(--top,120px) + 14px)}
+
+/* ---------- 옆 목록 (스크롤해도 따라옴) */
+.side{position:sticky;top:calc(var(--top,120px) + 14px);align-self:start;max-height:calc(100vh - var(--top,120px) - 28px);
+  overflow:auto;padding-right:4px;scrollbar-width:thin}
+.side h3{margin:0 0 6px 10px;font-size:13px;font-weight:700;color:var(--muted)}
+.side ul{list-style:none;margin:0 0 20px;padding:0}
+.side a,.side button{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;text-align:left;cursor:pointer;
+  padding:6px 10px;border-radius:var(--r-s);color:var(--ink);text-decoration:none;font-size:14.5px;font-weight:600}
+.side a:hover,.side button:hover{background:rgba(255,255,255,.7)}
+.side a[aria-current]{background:var(--panel);box-shadow:inset 3px 0 0 var(--accent)}
+.side a.off{color:var(--faint)}
+.side button{font-weight:500}
+.side .mats button{font-weight:700}
+.side button:disabled{cursor:default}
+.side .reset{justify-content:center;border:1px solid var(--line);background:var(--panel);margin-bottom:16px;font-weight:600;color:var(--accent)}
+.side .reset:disabled{color:var(--faint);background:transparent}
+.side .none{padding:6px 10px;font-size:13.5px;color:var(--faint)}
+/* 필라멘트 특성 */
+.shelf-head{align-items:center}
+.info-btn{border:0;background:none;padding:3px;margin-left:2px;cursor:pointer;color:var(--faint);border-radius:50%;display:inline-flex}
+.info-btn svg{width:20px;height:20px}
+.info-btn:hover,.info-btn[aria-expanded=true]{color:var(--accent);background:var(--accent-soft)}
+.trait{position:absolute;z-index:30;background:var(--panel);border:1px solid var(--panel-line);border-radius:var(--r-m);
+  box-shadow:0 18px 40px -16px rgba(20,30,40,.4);padding:14px 18px 12px;max-height:70vh;overflow:auto}
+@media (prefers-reduced-motion:no-preference){.trait:not([hidden]){animation:trait-in .18s ease-out}
+  @keyframes trait-in{from{opacity:0;transform:translateY(-6px)}}}
+.trait .tr-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.trait .tr-head b{font-size:16px}
+.trait .x{font-size:20px}
+.trait section{padding:10px 0;border-top:1px solid #EEF1F3}
+.trait section:first-of-type{border-top:0;padding-top:4px}
+.trait h4{margin:0 0 8px;font-size:15px}
+.tr-facts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 10px}
+.tr-facts div{background:#F4F6F8;border-radius:var(--r-s);padding:6px 8px}
+.tr-facts dt{font-size:12px;color:var(--muted)}
+.tr-facts dd{margin:2px 0 0;font-weight:700;font-size:14px}
+.trait p{margin:0 0 8px;font-size:14px;line-height:1.55}
+.trait p span{display:block;font-size:12px;color:var(--muted);font-weight:600}
+.trait .tr-src{font-size:12px;color:var(--faint);margin:6px 0 0}
+/* 고르면 다른 항목이 위로 부드럽게 접힘 */
+.side li{max-height:44px;overflow:hidden;transition:max-height .3s ease,opacity .22s ease,transform .3s ease}
+.side li.gone{max-height:0;opacity:0;transform:translateY(-4px);pointer-events:none}
+@media (prefers-reduced-motion:reduce){.side li{transition:none}}
+.side button[aria-pressed=true]{background:var(--ink);color:#fff}
+.side .n{margin-left:auto;font-size:12.5px;color:var(--faint);font-weight:500}
+.side button[aria-pressed=true] .n{color:#C9D0D6}
+.side .sw{width:14px;height:14px}
+.colorhead{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--panel-line);border-radius:var(--r-s);
+  padding:10px 14px;margin-bottom:22px}
+.colorhead p{margin:0;flex:1}
+@media (max-width:900px){
+  .layout{grid-template-columns:minmax(0,1fr);gap:12px}
+  .side{min-width:0;top:var(--top,120px);z-index:4;max-height:none;overflow:visible;background:rgba(230,234,237,.96);margin:0 -28px;padding:8px 28px;
+    border-bottom:1px solid var(--line)}
+  .side h3{display:none}
+  .side ul{display:flex;gap:6px;overflow-x:auto;margin:0 0 6px;padding-bottom:2px}
+  .side li{flex:none}
+  .side li.gone{display:none}
+  .side a,.side button{width:auto;white-space:nowrap;border:1px solid var(--line);background:var(--panel);padding:4px 10px;font-size:13.5px}
+  .side a[aria-current]{box-shadow:none;background:var(--accent);border-color:var(--accent);color:#fff}
+  .side a[aria-current] .n{color:#DCE6F0}
+  .shelf,.qt tr.group{scroll-margin-top:calc(var(--top,120px) + 100px)}
+}
+.notice{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;background:var(--panel);border:1px solid var(--panel-line);
+  border-left:4px solid var(--warn);border-radius:var(--r-s);padding:12px 16px;margin-bottom:24px}
+.notice p{margin:0;flex:1;min-width:240px}
+.legend{display:flex;gap:14px;font-size:13px;color:var(--muted);margin:0 0 14px 4px}
+.legend i{display:inline-block;width:18px;height:8px;border-radius:999px;margin-right:5px;vertical-align:1px}
+
+/* ---------- 선반 */
+.shelf{margin-bottom:34px}
+.shelf-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;margin:0 0 4px 4px}
+.shelf-head h2{margin:0;font-size:20px;font-weight:800;letter-spacing:-.01em}
+.shelf-head span{color:var(--muted);font-size:14px}
+.rack{display:flex;flex-wrap:wrap;gap:6px 10px;padding:0 6px}
+.plank{height:12px;border-radius:3px;background:linear-gradient(var(--plank),var(--plank-edge));box-shadow:0 8px 10px -6px rgba(30,41,50,.35);margin-top:-2px}
+.spool{width:150px;border:0;background:none;padding:10px 6px 12px;text-align:center;border-radius:var(--r-m)}
+button.spool{cursor:pointer}
+button.spool:hover{background:rgba(255,255,255,.6)}
+.spool svg{display:block;margin:0 auto;width:112px;height:112px;overflow:visible}
+.spool .name{font-weight:700;margin-top:4px;font-size:15px}
+.bar{height:10px;border-radius:999px;border:1px solid rgba(30,41,50,.3);background:#fff;margin:6px 8px 4px;overflow:hidden}
+.bar i{display:block;height:100%}
+.meta{font-size:13px;color:var(--muted)}
+.days{font-size:13px;font-weight:700;margin-top:1px}
+.days.crit{color:var(--empty)}.days.warn{color:var(--warn)}.days.calm{color:var(--ink);font-weight:600}
+.badge{display:inline-block;font-size:12px;font-weight:700;border-radius:4px;padding:0 6px;margin-left:4px}
+.st-부족 .badge{background:var(--warn-bg);color:var(--warn)}
+.st-없음 .badge{background:var(--empty-bg);color:var(--empty)}
+.st-미입력 .badge{background:#fff;color:var(--muted);border:1px dashed var(--muted)}
+.st-없음 svg,.st-미입력 svg{opacity:.5}
+.empty{padding:60px 0;text-align:center;color:var(--muted)}
+
+/* ---------- 빠른 입력 */
+.quick{background:var(--panel);border:1px solid var(--panel-line);border-radius:var(--r-m);padding:20px 22px 10px}
+.quick h2{margin:0;font-size:19px;font-weight:800}
+.quick .sub{color:var(--muted);font-size:14px;margin:2px 0 14px;max-width:72ch}
+.qt{width:100%;border-collapse:collapse}
+.qt th{font-size:13px;color:var(--muted);font-weight:600;text-align:left;padding:6px 8px;border-bottom:1px solid var(--panel-line);white-space:nowrap}
+.qt td{padding:7px 8px;border-bottom:1px solid #EEF1F3;vertical-align:middle}
+.qt tr.group td{padding:16px 8px 6px;font-weight:800;font-size:15px;border-bottom:1px solid var(--panel-line)}
+.qt .who{display:flex;align-items:center;gap:9px;white-space:nowrap}
+.qt .who .sw{width:16px;height:16px}
+.qt input,.qt select{width:72px;border:1px solid var(--line);border-radius:var(--r-s);padding:5px 8px;background:#fff;text-align:right}
+.qt select{width:84px;text-align:left}
+.qt .use{color:var(--muted);font-size:14px;white-space:nowrap;text-align:right}
+.qt .act{white-space:nowrap;text-align:right}
+.qt .saved{color:var(--ok);font-weight:700;font-size:13px}
+.qt tr.dirty td{background:#F7FAFC}
+.qt tr.pending .who b::after{content:"미입력";font-size:11.5px;font-weight:700;color:var(--muted);border:1px dashed var(--muted);border-radius:4px;padding:0 5px;margin-left:6px}
+
+/* ---------- 대화상자 */
+dialog{border:0;border-radius:14px;padding:0;width:min(720px,94vw);color:var(--ink);box-shadow:0 30px 60px -20px rgba(20,30,40,.45)}
+dialog::backdrop{background:rgba(30,41,50,.45)}
+.dlg-head{display:grid;grid-template-columns:132px 1fr auto;gap:18px;padding:22px 24px 16px;align-items:center;border-bottom:1px solid #E7EBEE}
+.dlg-head h3{margin:0;font-size:22px}
+.dlg-head .sub{color:var(--muted);font-size:14px}
+.facts{display:grid;grid-template-columns:repeat(3,auto);gap:4px 22px;margin-top:10px;font-size:14px}
+.facts b{display:block;font-size:17px}
+.facts span{color:var(--muted)}
+.x{border:0;background:none;font-size:22px;cursor:pointer;align-self:start;color:var(--muted)}
+.dlg-tabs{display:flex;gap:2px;padding:0 20px;border-bottom:1px solid #E7EBEE;overflow-x:auto}
+.tab{border:0;background:none;padding:10px 12px 12px;cursor:pointer;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap}
+.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--ink)}
+.dlg-body{padding:20px 24px 24px}
+form.f{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 16px}
+.f label,.f .lbl{display:grid;gap:4px;font-size:13px;color:var(--muted);font-weight:600}
+.f input,.f select{border:1px solid var(--line);border-radius:var(--r-s);padding:8px 10px;background:#fff;color:var(--ink);font-weight:400;font-size:15px}
+.f .full{grid-column:1/-1}
+.f .hint{grid-column:1/-1;font-size:13px;color:var(--muted);margin:-4px 0 0;font-weight:400}
+.f small{font-weight:400;color:var(--muted)}
+.f .row-end{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.seg{display:flex;gap:6px}
+.seg input{position:absolute;opacity:0}
+.seg label{border:1px solid var(--line);border-radius:var(--r-s);padding:7px 14px;cursor:pointer;color:var(--ink);font-size:15px}
+.seg label:has(input:checked){background:var(--ink);color:#fff;border-color:var(--ink);font-weight:700}
+.seg label:has(input:focus-visible){outline:3px solid var(--accent);outline-offset:2px}
+.calc{font-size:15px;color:var(--ink)}
+.err{color:var(--empty);font-size:14px}
+.hist{list-style:none;margin:0;padding:0;max-height:320px;overflow:auto}
+.hist li{display:grid;grid-template-columns:92px 54px 1fr auto;gap:10px;padding:8px 0;border-bottom:1px solid #EEF1F3;font-size:14px;align-items:baseline}
+.hist .k{font-weight:700}
+.hist .k.사용{color:var(--accent)}.hist .k.구매{color:var(--ok)}.hist .k.보정{color:var(--muted)}
+.hist .when{color:var(--muted)}
+.hist .g{font-weight:700;text-align:right}
+.hist .nt{color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+
+/* 색상 선택 */
+.cf-btn{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:var(--r-s);background:#fff;padding:6px 10px;cursor:pointer;text-align:left;color:var(--ink);font-weight:400}
+.cf-btn:hover{border-color:var(--muted)}
+.cf-btn .chg{margin-left:auto;color:var(--accent);font-weight:600;font-size:14px}
+.sw{display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.25);flex:none}
+.sw.lg{width:26px;height:26px}
+.picker{grid-column:1/-1;border:1px solid var(--line);border-radius:var(--r-m);padding:16px;background:#F7F9FA;display:grid;gap:14px}
+.picker[hidden]{display:none}
+.pk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px}
+.pk-sw{display:grid;justify-items:center;gap:4px;border:2px solid transparent;border-radius:var(--r-s);background:none;padding:6px 2px;cursor:pointer;font-size:12px;color:var(--ink)}
+.pk-sw .sw{width:30px;height:30px}
+.pk-sw[aria-pressed=true]{border-color:var(--ink);background:#fff;font-weight:700}
+.pk-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.pk-row input[type=color]{width:44px;height:34px;padding:2px;border:1px solid var(--line);border-radius:var(--r-s);background:#fff;cursor:pointer}
+.pk-row input.hex{width:110px}
+.pk-now{display:flex;align-items:center;gap:12px;padding:10px 12px;background:#fff;border-radius:var(--r-s);border:1px solid #E1E6EA}
+.pk-now .chip-big{width:54px;height:34px;border-radius:var(--r-s);border:1px solid rgba(0,0,0,.2)}
+.pk-now b{font-size:16px}
+.pk-act{display:flex;gap:8px;margin-left:auto}
+
+/* 재질 선택 드롭다운 */
+.combo{position:relative;display:block}
+.combo input{width:100%;padding-right:36px}
+.combo .caret{position:absolute;right:10px;top:50%;width:18px;height:18px;margin-top:-9px;pointer-events:none;color:var(--muted);transition:transform .15s}
+.combo[data-open] .caret{transform:rotate(180deg)}
+.combo-list{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 4px);margin:0;padding:6px;list-style:none;
+  background:#fff;border:1px solid var(--line);border-radius:var(--r-m);box-shadow:0 14px 28px -12px rgba(20,30,40,.35);
+  max-height:232px;overflow:auto;display:none}
+.combo[data-open] .combo-list{display:block}
+.combo-list li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-radius:var(--r-s);
+  cursor:pointer;font-size:15px;font-weight:500;color:var(--ink)}
+.combo-list li .cnt{font-size:12px;color:var(--muted);font-weight:400}
+.combo-list li[aria-selected=true]{background:#EEF3F8}
+.combo-list li.cur{font-weight:700}
+.combo-list li.cur::after{content:"";width:6px;height:10px;border:solid var(--accent);border-width:0 2px 2px 0;transform:rotate(45deg);margin-right:4px}
+.combo-list li.new{color:var(--accent);border-top:1px solid #EEF1F3;border-radius:0 0 var(--r-s) var(--r-s)}
+.combo-list li.none{color:var(--muted);cursor:default}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:var(--r-s);opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+@media (max-width:760px){
+  .qt thead{display:none}
+  .qt tr{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 10px;padding:10px 0;border-bottom:1px solid #EEF1F3}
+  .qt tr.group{display:block;padding:0}
+  .qt td{border:0;padding:0}
+  .qt td[data-l]::before{content:attr(data-l);display:block;font-size:12px;color:var(--muted)}
+  .qt td.whocell{grid-column:1/-1}.qt td.use{grid-column:1/3;text-align:left}.qt td.act{text-align:right}
+  .qt input,.qt select{width:100%}
+}
+@media (max-width:640px){
+  .top-in{padding:12px 16px 10px}.nav{margin-left:0}.view{margin-left:0}
+  .layout{padding:12px 12px 40px}.side{margin:0 -12px;padding:8px 12px}.quick{padding:16px 14px 6px}
+  .spool{width:calc(50% - 6px)} .dlg-head{grid-template-columns:90px 1fr auto} form.f{grid-template-columns:1fr}
+  .hist li{grid-template-columns:80px 1fr auto}.hist .nt{grid-column:1/-1}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <h1>필라멘트 재고 현황</h1>
+  <span class="updated" id="updated"></span>
+  <nav class="nav" id="nav" aria-label="페이지"><a href="/">관리 현황</a><a href="/stock" aria-current="page">재고 관리</a><a href="/prints">출력 현황</a></nav>
+  <div class="tools">
+    <div id="filters" style="display:contents"></div>
+    <div class="view" id="view" role="group" aria-label="보기 방식">
+      <button type="button" data-v="shelf" aria-pressed="true">선반</button>
+      <button type="button" data-v="quick" aria-pressed="false">빠른 입력</button>
+    </div>
+    <button class="btn primary" id="addItemBtn">필라멘트 등록</button>
+  </div>
+</div></header>
+<div class="layout"><aside class="side" id="side" aria-label="필라멘트 찾기"></aside><main id="main"></main></div>
+
+<dialog id="dlg"></dialog>
+<div class="toast" id="toast" role="status"></div>
+<div class="trait" id="trait" role="dialog" aria-label="필라멘트 특성" hidden></div>
+
+<script>window.__SNAPSHOT__={"items": [{"id": "4da3c34353", "material": "ABS", "color_name": "그레이", "color_hex": "#8C9095", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 200}, "group": "ABS", "total_g": 200, "rolls": 1, "status": "부족"}, {"id": "f443b49088", "material": "ABS", "color_name": "블랙", "color_hex": "#232323", "min_g": 300, "unopened": [1000, 1000], "current": {"size": 1000, "remain": 900}, "group": "ABS", "total_g": 2900, "rolls": 3, "status": "충분"}, {"id": "9bd0373993", "material": "ABS", "color_name": "화이트", "color_hex": "#F3F3EF", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 400}, "group": "ABS", "total_g": 400, "rolls": 1, "status": "충분"}, {"id": "5d7d608f3c", "material": "FPLA", "color_name": "블랙", "color_hex": "#232323", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 1000}, "group": "PLA", "total_g": 1000, "rolls": 1, "status": "충분"}, {"id": "4ccaaeda32", "material": "PETG", "color_name": "그린", "color_hex": "#2F9E5B", "min_g": 300, "unopened": [1000], "current": {"size": 1000, "remain": 200}, "group": "PETG", "total_g": 1200, "rolls": 2, "status": "충분"}, {"id": "42bb03f881", "material": "PETG", "color_name": "블랙", "color_hex": "#232323", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 200}, "group": "PETG", "total_g": 200, "rolls": 1, "status": "부족"}, {"id": "ec2cc420a2", "material": "PETG", "color_name": "블루", "color_hex": "#2F6FD0", "min_g": 300, "unopened": [1000], "current": {"size": 1000, "remain": 400}, "group": "PETG", "total_g": 1400, "rolls": 2, "status": "충분"}, {"id": "8374931352", "material": "PETG", "color_name": "투명 화이트", "color_hex": "#E4ECEF", "min_g": 300, "unopened": [1000, 1000], "current": {"size": 1000, "remain": 100}, "group": "PETG", "total_g": 2100, "rolls": 3, "status": "충분"}, {"id": "2dd8a2a746", "material": "PETG", "color_name": "화이트", "color_hex": "#F3F3EF", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 600}, "group": "PETG", "total_g": 600, "rolls": 1, "status": "충분"}, {"id": "cbb4cd8c5c", "material": "PLA", "color_name": "그레이", "color_hex": "#8C9095", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 452.3}, "group": "PLA", "total_g": 452.3, "rolls": 1, "status": "충분"}, {"id": "fc6ec7b05b", "material": "PLA", "color_name": "블랙", "color_hex": "#232323", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 300}, "group": "PLA", "total_g": 300, "rolls": 1, "status": "충분"}, {"id": "81ac0dcfc3", "material": "PLA", "color_name": "블루", "color_hex": "#2F6FD0", "min_g": 300, "unopened": [1000], "current": {"size": 1000, "remain": 500}, "group": "PLA", "total_g": 1500, "rolls": 2, "status": "충분"}, {"id": "5c31a049e1", "material": "PLA", "color_name": "화이트", "color_hex": "#F3F3EF", "min_g": 300, "unopened": [1000], "current": {"size": 1000, "remain": 300}, "group": "PLA", "total_g": 1300, "rolls": 2, "status": "충분"}, {"id": "5e69f47ad8", "material": "PP+CF", "color_name": "블랙", "color_hex": "#232323", "min_g": 300, "unopened": [1000], "current": {"size": 1000, "remain": 900}, "group": "PP", "total_g": 1900, "rolls": 2, "status": "충분"}, {"id": "b8bc4d6765", "material": "PP+TD25", "color_name": "페르시안 그린", "color_hex": "#00A693", "min_g": 300, "unopened": [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000], "current": {"size": 1000, "remain": 1000}, "group": "PP", "total_g": 25000, "rolls": 25, "status": "충분"}, {"id": "c8d6f48256", "material": "PPS", "color_name": "블랙", "color_hex": "#232323", "min_g": 300, "unopened": [1000, 1000], "current": {"size": 1000, "remain": 300}, "group": "PPS", "total_g": 2300, "rolls": 3, "status": "충분"}, {"id": "a6aeecf690", "material": "TPU 75A", "color_name": "화이트", "color_hex": "#F3F3EF", "min_g": 300, "unopened": [1000], "current": {"size": 1000, "remain": 800}, "group": "TPU 75A", "total_g": 1800, "rolls": 2, "status": "충분"}, {"id": "ce520e560a", "material": "TPU 95A", "color_name": "레드", "color_hex": "#D23B33", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 300}, "group": "TPU 95A", "total_g": 300, "rolls": 1, "status": "충분"}, {"id": "c97562539f", "material": "TPU 95A", "color_name": "블루", "color_hex": "#2F6FD0", "min_g": 300, "unopened": [1000], "current": {"size": 1000, "remain": 800}, "group": "TPU 95A", "total_g": 1800, "rolls": 2, "status": "충분"}, {"id": "b0a9a7e974", "material": "PLA", "color_name": "FR(난연)", "color_hex": "#D9D9D6", "min_g": 300, "unopened": [1000], "current": {"size": 1000, "remain": 1000}, "group": "PLA", "total_g": 2000, "rolls": 2, "status": "충분"}, {"id": "bacd68b829", "material": "PLA", "color_name": "그레이블루", "color_hex": "#5B7083", "min_g": 300, "unopened": [1000], "current": {"size": 1000, "remain": 300}, "group": "PLA", "total_g": 1300, "rolls": 2, "status": "충분"}, {"id": "5c24a87dee", "material": "PLA", "color_name": "레드", "color_hex": "#D23B33", "min_g": 300, "unopened": [1000], "current": {"size": 1000, "remain": 900}, "group": "PLA", "total_g": 1900, "rolls": 2, "status": "충분"}, {"id": "d7998f01d4", "material": "PETG", "color_name": "실버", "color_hex": "#B9BEC3", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 920.4}, "group": "PETG", "total_g": 920.4, "rolls": 1, "status": "충분"}, {"id": "41f370043e", "material": "PETG", "color_name": "우드", "color_hex": "#A47551", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 944.0}, "group": "PETG", "total_g": 944.0, "rolls": 1, "status": "충분"}, {"id": "873333d8f7", "material": "ABS", "color_name": "FR(난연)", "color_hex": "#D9D9D6", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 1000}, "group": "ABS", "total_g": 1000, "rolls": 1, "status": "충분"}, {"id": "c1e109bf71", "material": "PA", "color_name": "네츄럴", "color_hex": "#E9DFC6", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 300}, "group": "PA", "total_g": 300, "rolls": 1, "status": "충분"}, {"id": "dfb4a3da51", "material": "TPU 85A", "color_name": "블랙", "color_hex": "#232323", "min_g": 300, "unopened": [1000], "current": {"size": 1000, "remain": 200}, "group": "TPU 85A", "total_g": 1200, "rolls": 2, "status": "충분"}, {"id": "c3185bb84b", "material": "PC", "color_name": "투명", "color_hex": "#E4ECEF", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 1000}, "group": "PC", "total_g": 1000, "rolls": 1, "status": "충분"}, {"id": "29676ba361", "material": "PC", "color_name": "블랙", "color_hex": "#232323", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 400}, "group": "PC", "total_g": 400, "rolls": 1, "status": "충분"}, {"id": "343e81cecc", "material": "PC+ABS", "color_name": "쿨그레이1C", "color_hex": "#D9D9D6", "min_g": 300, "unopened": [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000], "current": {"size": 1000, "remain": 1000}, "group": "PC+ABS", "total_g": 23000, "rolls": 23, "status": "충분"}, {"id": "0af4822559", "material": "PLA", "color_name": "실크", "color_hex": "#C9CCD1", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 1000}, "group": "PLA", "total_g": 1000, "rolls": 1, "status": "충분"}, {"id": "31f5aa3368", "material": "PLA", "color_name": "페르시안 그린", "color_hex": "#00A693", "min_g": 300, "unopened": [1000, 1000], "current": {"size": 1000, "remain": 100}, "group": "PLA", "total_g": 2100, "rolls": 3, "status": "충분"}, {"id": "5c6162378f", "material": "PLA-S", "color_name": "서포트", "color_hex": "#EDEDED", "min_g": 300, "unopened": [1000], "current": {"size": 1000, "remain": 71.8}, "group": "PLA", "total_g": 1071.8, "rolls": 2, "status": "충분"}, {"id": "8023a97880", "material": "PLA", "color_name": "실크 스카이블루", "color_hex": "#7FC4EA", "min_g": 75, "unopened": [], "current": {"size": 250, "remain": 250}, "group": "PLA", "total_g": 250, "rolls": 1, "status": "충분"}, {"id": "2fe048c662", "material": "PLA", "color_name": "실크 실버", "color_hex": "#C7CBD0", "min_g": 150, "unopened": [500], "current": {"size": 500, "remain": 200}, "group": "PLA", "total_g": 700, "rolls": 2, "status": "충분"}, {"id": "8bf2333e1d", "material": "PLA", "color_name": "실크 골드", "color_hex": "#D4AF37", "min_g": 150, "unopened": [], "current": {"size": 500, "remain": 450}, "group": "PLA", "total_g": 450, "rolls": 1, "status": "충분"}, {"id": "21a59c8ed8", "material": "PLA", "color_name": "형광", "color_hex": "#D4F03A", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 1000}, "group": "PLA", "total_g": 1000, "rolls": 1, "status": "충분"}, {"id": "2b6eaeac95", "material": "PETG-CF", "color_name": "와인", "color_hex": "#5E2A33", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 1000}, "group": "PETG", "total_g": 1000, "rolls": 1, "status": "충분"}, {"id": "ce73931bda", "material": "ABS-S", "color_name": "서포트", "color_hex": "#EDEDED", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 900}, "group": "ABS", "total_g": 900, "rolls": 1, "status": "충분"}, {"id": "f11913996d", "material": "ABS", "color_name": "페르시안 그린", "color_hex": "#00A693", "min_g": 300, "unopened": [1000], "current": {"size": 1000, "remain": 1000}, "group": "ABS", "total_g": 2000, "rolls": 2, "status": "충분"}, {"id": "abe6d2c0b0", "material": "PA-CF", "color_name": "블랙", "color_hex": "#232323", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 600}, "group": "PA", "total_g": 600, "rolls": 1, "status": "충분"}, {"id": "7b6e3f2eb2", "material": "PA-S", "color_name": "서포트", "color_hex": "#EDEDED", "min_g": 300, "unopened": [], "current": {"size": 1000, "remain": 1000}, "group": "PA", "total_g": 1000, "rolls": 1, "status": "충분"}, {"id": "4fbd20c066", "material": "PVA", "color_name": "수용성", "color_hex": "#EDE6CF", "min_g": 300, "unopened": [1000, 1000], "current": {"size": 1000, "remain": 400}, "group": "서포트용", "total_g": 2400, "rolls": 3, "status": "충분"}, {"id": "a83edc5286", "material": "PPS-CF", "color_name": "블랙", "color_hex": "#232323", "min_g": 150, "unopened": [], "current": {"size": 500, "remain": 450}, "group": "PPS", "total_g": 450, "rolls": 1, "status": "충분"}], "generated_at": "2026-11-20T14:45:29", "forecast": [{"id": "4da3c34353", "days_left": 11, "rate_g_day": 18.7, "used90_g": 1680.5}, {"id": "f443b49088", "days_left": 148, "rate_g_day": 19.6, "used90_g": 1764.1}, {"id": "9bd0373993", "days_left": 7, "rate_g_day": 55.8, "used90_g": 5022.7}, {"id": "5d7d608f3c", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "4ccaaeda32", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "42bb03f881", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "ec2cc420a2", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "8374931352", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "2dd8a2a746", "days_left": 34, "rate_g_day": 17.5, "used90_g": 1572.2}, {"id": "cbb4cd8c5c", "days_left": 9, "rate_g_day": 49.8, "used90_g": 4481.7}, {"id": "fc6ec7b05b", "days_left": 14, "rate_g_day": 22.0, "used90_g": 1977.8}, {"id": "81ac0dcfc3", "days_left": 128, "rate_g_day": 11.8, "used90_g": 1058.0}, {"id": "5c31a049e1", "days_left": 34, "rate_g_day": 38.4, "used90_g": 3457.6}, {"id": "5e69f47ad8", "days_left": 907, "rate_g_day": 2.1, "used90_g": 188.5}, {"id": "b8bc4d6765", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "c8d6f48256", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "a6aeecf690", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "ce520e560a", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "c97562539f", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "b0a9a7e974", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "bacd68b829", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "5c24a87dee", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "d7998f01d4", "days_left": 1009, "rate_g_day": 0.9, "used90_g": 82.1}, {"id": "41f370043e", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "873333d8f7", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "c1e109bf71", "days_left": 384, "rate_g_day": 0.8, "used90_g": 70.4}, {"id": "dfb4a3da51", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "c3185bb84b", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "29676ba361", "days_left": 65, "rate_g_day": 6.1, "used90_g": 551.2}, {"id": "343e81cecc", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "0af4822559", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "31f5aa3368", "days_left": 7875, "rate_g_day": 0.3, "used90_g": 24.0}, {"id": "5c6162378f", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "8023a97880", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "2fe048c662", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "8bf2333e1d", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "21a59c8ed8", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "2b6eaeac95", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "ce73931bda", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "f11913996d", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "abe6d2c0b0", "days_left": 149, "rate_g_day": 4.0, "used90_g": 363.5}, {"id": "7b6e3f2eb2", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "4fbd20c066", "days_left": null, "rate_g_day": 0.0, "used90_g": 0}, {"id": "a83edc5286", "days_left": 306, "rate_g_day": 1.5, "used90_g": 132.5}], "traits": {"rows": [{"name": "PLA / F-PLA", "heat": "50 ~ 60 °C", "cold": "0 ~ -10 °C", "chem": "낮음", "feature": "단단하지만 충격에 쉽게 깨짐. 출력 난이도 가장 낮고 냄새 적음.", "use": "실내용 디자인 샘플, 피규어, 시제품 코어"}, {"name": "PETG", "heat": "75 ~ 80 °C", "cold": "약 -20 °C", "chem": "보통", "feature": "PLA의 쉬운 출력성과 ABS의 단단함을 결합. 일상 내구성이 좋고 광택 있음.", "use": "생활 용품, 기계 외장 커버, 일반 가반성 케이스"}, {"name": "ABS / PC+ABS", "heat": "85 ~ 125 °C", "cold": "-30 ~ -40 °C", "chem": "보통", "feature": "레고 재질. 후가공(아세톤) 용이, 영하에서도 질긴 특성 유지하나 수축 주의.", "use": "자동차 내외장 부품, 전자제품 케이스, 공구 손잡이"}, {"name": "PA (나일론) / PA12+CF", "heat": "90 ~ 150 °C", "cold": "-40 ~ -60 °C", "chem": "우수", "feature": "마찰과 마모에 극도로 강함. 탄소섬유(CF) 결합 시 금속 수준의 강성과 치수 안정성.", "use": "기어, 베어링, 드론 프레임, 고하중 구동 부품"}, {"name": "PP-CF / PP+TF25", "heat": "100 ~ 120 °C", "cold": "-20 ~ -30 °C", "chem": "최고 수준", "feature": "산/염기 등 대부분의 화학 물질에 완벽한 무반응. 방수성이 뛰어나고 양산품과 유사물성.", "use": "화학 용기 밀폐 부품, 배관 커넥터, 자동차 엔진룸 부품"}, {"name": "PC (폴리카보네이트)", "heat": "120 ~ 140 °C", "cold": "-40 ~ -50 °C", "chem": "보통", "feature": "방탄유리 소재. 투명도가 높으면서 충격 저항성과 내열/내한성이 모두 최상위권.", "use": "한랭지용 투명 보호 커버, 고온/고냉 반복 노출 부품"}, {"name": "PPS", "heat": "200 °C 이상", "cold": "-50 °C 이하", "chem": "최고 수준", "feature": "슈퍼 엔지니어링 플라스틱. 완벽한 난연성(불에 안 탐) 및 극한 환경 물성 보존.", "use": "우주항공 부품, 반도체 장비, 초고온 화학 공정 부품"}, {"name": "TPU (75A / 85A / 95A)", "heat": "70 ~ 80 °C", "cold": "-30 ~ -40 °C", "chem": "우수", "feature": "고무처럼 말랑하고 인장 강도가 높아 잘 찢어지지 않음. 숫자가 낮을수록 말랑함.", "use": "맞춤형 패킹(개스킷), 충격 흡수 범퍼, 로봇 그리퍼 손가락"}, {"name": "서포트용 (Support)", "heat": "-", "cold": "-", "chem": "-", "feature": "출력 시 공중에 뜬 부분을 받쳐주는 지지대 전용 재질. 물에 녹거나 깔끔하게 떨어짐.", "use": "단독 제품용이 아닌 복잡한 형상 출력 시 보조용 재질"}], "map": {"ABS": 2, "ABS-S": 8, "FPLA": 0, "PA": 3, "PA-CF": 3, "PA-S": 8, "PC": 5, "PC+ABS": 2, "PETG": 1, "PETG-CF": 1, "PLA": 0, "PLA-S": 8, "PP+CF": 4, "PP+TD25": 4, "PPS": 6, "PPS-CF": 6, "PVA": 8, "TPU 75A": 7, "TPU 85A": 7, "TPU 95A": 7}}};</script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const won = n => n == null ? "—" : Number(n).toLocaleString("ko-KR") + "원";
+const g = n => Math.round(n).toLocaleString("ko-KR") + "g";
+const kg = n => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "kg" : Math.round(n) + "g";
+const sizeLabel = s => s >= 1000 ? (s / 1000) + "kg" : s + "g";
+const perDay = n => n > 0 && n < 1 ? "하루 1g 미만" : `하루 ${Math.round(n)}g`;
+const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+const PALETTE = [["화이트","#F3F3EF"],["블랙","#232323"],["그레이","#8C9095"],["실버","#B9BEC3"],["레드","#D23B33"],["오렌지","#F07F1E"],
+  ["옐로우","#F2C21B"],["그린","#2F9E5B"],["그레이 그린","#6F8A78"],["페르시안 그린","#00A693"],["블루","#2F6FD0"],["네이비","#1F3A68"],
+  ["퍼플","#7B4FB0"],["핑크","#E97BA8"],["브라운","#7A4E2D"],["베이지","#D8C3A0"],["투명 화이트","#E4ECEF"],["내추럴","#E9DFC6"]];
+// 읽기 전용 공유 페이지는 서버 없이 이 데이터로 그린다
+const SNAP = window.__SNAPSHOT__ || null, READONLY = !!SNAP;
+let S = SNAP || {items:[], log:[]}, F = {}, filter = "전체", q = "", view = "shelf";
+const savedIds = new Set();  // 빠른 입력에서 이번에 저장한 줄
+const fc = id => F[id] || {};  // 품목별 예상(남은 기간·최근 사용량)
+
+async function api(method, path, body) {
+  const r = await fetch(path, {method, headers:{"Content-Type":"application/json"}, body: body ? JSON.stringify(body) : undefined});
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || "요청을 처리하지 못했습니다");
+  S = d; render();
+  if (method !== "GET") loadForecast();
+  return d;
+}
+async function loadForecast() {
+  try {
+    const r = await fetch("/api/overview"); if (!r.ok) return;
+    const o = await r.json(); F = {}; o.items.forEach(i => F[i.id] = i); render();
+  } catch (e) { /* 예상치는 없어도 재고 관리는 동작 */ }
+}
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("on"), 2200); }
+function shade(hex, f) {
+  const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255].map(v => Math.max(0, Math.min(255, Math.round(v * f))));
+  return "#" + c.map(v => v.toString(16).padStart(2, "0")).join("");
+}
+const frac = it => it.current ? it.current.remain / it.current.size : 0;
+const level = f => f >= .7 ? "var(--lv-high)" : f > .3 ? "var(--lv-mid)" : "var(--lv-low)";
+const colorName = hex => (PALETTE.find(p => p[1].toLowerCase() === String(hex).toLowerCase()) || [null])[0];
+
+// 스풀 정면: 남은 양만큼 감긴 필라멘트 링이 얇아진다. 재고 미입력은 색만 알아보게 흐리게.
+function spoolSVG(it, size = 112) {
+  const f = it.status === "미입력" ? 1 : frac(it), rOut = 18 + 27 * f, hex = it.color_hex || "#999";
+  const ring = f > 0 ? `<circle cx="50" cy="50" r="${(rOut + 18) / 2}" fill="none" stroke="${hex}" stroke-width="${rOut - 18}"/>
+     <circle cx="50" cy="50" r="${rOut}" fill="none" stroke="${shade(hex, .72)}" stroke-width=".8"/>
+     ${[0.35,0.6,0.85].filter(k => 18 + 27 * k < rOut).map(k => `<circle cx="50" cy="50" r="${18 + 27 * k}" fill="none" stroke="${shade(hex, .86)}" stroke-width=".5"/>`).join("")}` : "";
+  return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" aria-hidden="true">
+    <circle cx="50" cy="50" r="48" fill="#D9DEE2" stroke="#A9B2BA" stroke-width="1"/>
+    <circle cx="50" cy="50" r="45.5" fill="none" stroke="#C3CAD0" stroke-width=".8"/>
+    ${ring}
+    <circle cx="50" cy="50" r="17.5" fill="#EEF1F3" stroke="#A9B2BA" stroke-width=".8"/>
+    <circle cx="50" cy="50" r="7" fill="#fff" stroke="#A9B2BA" stroke-width=".8"/>
+    ${[0,120,240].map(a => { const t = a * Math.PI / 180; return `<circle cx="${50 + 12.5 * Math.cos(t)}" cy="${50 + 12.5 * Math.sin(t)}" r="2.6" fill="#fff" stroke="#A9B2BA" stroke-width=".6"/>`; }).join("")}
+    ${it.rolls > 1 ? `<g><circle cx="88" cy="14" r="12" fill="var(--ink)"/><text x="88" y="18.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">${it.rolls}</text></g>` : ""}
+  </svg>`;
+}
+function bar(it) {
+  const f = frac(it);
+  return `<div class="bar" role="img" aria-label="사용 중인 롤 ${Math.round(f * 100)}% 남음"><i style="width:${(f * 100).toFixed(1)}%;background:${level(f)}"></i></div>`;
+}
+function metaLine(it) {
+  if (it.status === "미입력") return "재고를 입력하세요";
+  if (!it.current) return "보유 0롤";
+  return `${g(it.current.remain)} / ${sizeLabel(it.current.size)} · ${it.rolls}롤`;
+}
+function daysLine(it) {
+  const f = fc(it.id);
+  if (it.status === "미입력") return f.used90_g ? `<div class="days calm">${perDay(f.rate_g_day)} 사용 중</div>` : "";
+  if (f.days_left == null) return "";
+  const d = f.days_left, cls = d <= 14 ? "crit" : d <= 30 ? "warn" : "calm";
+  return `<div class="days ${cls}">${d > 365 ? "1년 이상 남음" : `약 ${d.toLocaleString("ko-KR")}일 남음`}</div>`;
+}
+
+// 옆 목록에서 고른 재질·색상. 하나를 고르면 다른 쪽 목록에는 함께 있는 것만 남음
+let matF = "", colorF = "";
+const textMatch = i => (filter === "전체" || i.status === filter) &&
+  (!q || (i.material + " " + i.color_name).toLowerCase().includes(q.toLowerCase()));
+const matches = i => textMatch(i) && (!matF || grp(i) === matF) && (!colorF || i.color_name === colorF);
+const anySelected = () => matF || colorF || filter !== "전체" || q;
+function colorHead() {
+  if (!matF && !colorF) return "";
+  const n = S.items.filter(matches).length;
+  const what = [matF, colorF].filter(Boolean).join(" ");
+  return `<div class="colorhead">${colorF ? `<span class="sw lg" style="background:${esc(colorHex(colorF))}"></span>` : ""}
+    <p><b>${esc(what)}</b> 필라멘트 ${n}개</p><button class="btn" data-reset>재설정</button></div>`;
+}
+const colorHex = name => (S.items.find(i => i.color_name === name) || {}).color_hex || "#999";
+
+// ---------- 옆 목록: 재질·색상으로 골라 보기 (필라멘트가 추가되면 목록도 자동으로 늘어남)
+// 목록은 한 번 그려 두고, 고를 때는 숨김/보임만 바꿔 부드럽게 접히고 펼쳐지게 함
+let sideSig = "";
+function renderSide() {
+  const allMats = materialOrder(S.items), colorAll = {};
+  S.items.forEach(i => colorAll[i.color_name] = (colorAll[i.color_name] || 0) + 1);
+  const allCols = Object.keys(colorAll).sort((a, b) => colorAll[b] - colorAll[a] || a.localeCompare(b, "ko"));
+  const sig = allMats.join("|") + "#" + allCols.map(c => c + colorHex(c)).join("|");
+  if (sig !== sideSig || !$("#side .mats")) {
+    sideSig = sig;
+    $("#side").innerHTML = `
+      <button type="button" class="reset" data-reset>재설정</button>
+      <nav aria-labelledby="h-mat"><h3 id="h-mat">재질</h3><ul class="mats">${allMats.map(g =>
+        `<li data-k="${esc(g)}"><button type="button" data-mat="${esc(g)}">${esc(g)}<span class="n"></span></button></li>`).join("")}
+        <li class="none gone">해당 재질 없음</li></ul></nav>
+      <div aria-labelledby="h-col"><h3 id="h-col">색상</h3><ul class="cols">${allCols.map(c =>
+        `<li data-k="${esc(c)}"><button type="button" data-color="${esc(c)}"><span class="sw" style="background:${esc(colorHex(c))}"></span>${esc(c)}<span class="n"></span></button></li>`).join("")}
+        <li class="none gone">해당 색상 없음</li></ul></div>`;
+  }
+  // 재질 목록: 고른 색상이 있는 재질만, 재질을 골랐으면 그것만. 색상 목록도 같은 방식
+  const mats = groupBy(S.items.filter(i => textMatch(i) && (!colorF || i.color_name === colorF)));
+  const cols = {};
+  S.items.filter(i => textMatch(i) && (!matF || grp(i) === matF)).forEach(i => cols[i.color_name] = (cols[i.color_name] || 0) + 1);
+  const apply = (sel, counts, picked, attr) => {
+    let shown = 0;
+    document.querySelectorAll(`${sel} li[data-k]`).forEach(li => {
+      const k = li.dataset.k, n = counts[k] ? counts[k].length ?? counts[k] : 0;
+      const show = n > 0 && (!picked || k === picked);
+      li.classList.toggle("gone", !show);
+      li.setAttribute("aria-hidden", !show);
+      const b = li.querySelector("button");
+      b.tabIndex = show ? 0 : -1;
+      b.setAttribute("aria-pressed", picked === k);
+      if (n) b.querySelector(".n").textContent = n;
+      shown += show;
+    });
+    document.querySelector(`${sel} li.none`).classList.toggle("gone", shown > 0);
+  };
+  apply("#side .mats", mats, matF, "data-mat");
+  apply("#side .cols", cols, colorF, "data-color");
+  $("#side .reset").disabled = !anySelected();
+}
+// ---------- 필라멘트 특성 (공유 폴더 '필라멘트 보유 현황.xlsx'의 '필라멘트 특징' 시트)
+let T = (SNAP && SNAP.traits) || {rows: [], map: {}};
+const ICON_INFO = `<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.2" fill="none" stroke="currentColor" stroke-width="1.6"/>
+  <circle cx="10" cy="6.3" r="1.1" fill="currentColor"/><path d="M10 9v5.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+// 선반 하나에 여러 재질이 있으면(PLA 선반의 F-PLA, PLA 서포트 등) 해당하는 특성을 모두
+function traitRows(g) {
+  const idx = [...new Set(S.items.filter(i => grp(i) === g).map(i => T.map[i.material]).filter(v => v != null))];
+  return idx.map(i => T.rows[i]).filter(Boolean);
+}
+async function loadTraits() {
+  try { const r = await fetch("/api/material-info"); if (r.ok) { T = await r.json(); render(); } } catch (e) { /* 특성 없이도 동작 */ }
+}
+function openTrait(btn) {
+  const box = $("#trait"), g = btn.dataset.info;
+  if (box.dataset.for === g && !box.hidden) return closeTrait();
+  closeTrait();
+  const rows = traitRows(g);
+  box.innerHTML = `<div class="tr-head"><b>${esc(g)} 특성</b><button type="button" class="x" data-trait-close aria-label="닫기">×</button></div>` +
+    rows.map(r => `<section><h4>${esc(r.name)}</h4>
+      ${[r.heat, r.cold, r.chem].every(v => !v || v === "-") ? "" : `<dl class="tr-facts"><div><dt>내열 온도</dt><dd>${esc(r.heat || "—")}</dd></div><div><dt>내한 온도</dt><dd>${esc(r.cold || "—")}</dd></div>
+        <div><dt>내화학성</dt><dd>${esc(r.chem || "—")}</dd></div></dl>`}
+      ${r.feature ? `<p><span>강도·특징</span>${esc(r.feature)}</p>` : ""}${r.use ? `<p><span>주 사용처</span>${esc(r.use)}</p>` : ""}</section>`).join("");
+  box.dataset.for = g;
+  box.hidden = false;
+  const r = btn.getBoundingClientRect(), w = Math.min(420, innerWidth - 24);
+  box.style.width = w + "px";
+  box.style.left = Math.max(12, Math.min(innerWidth - w - 12, r.left - 8)) + scrollX + "px";
+  box.style.top = r.bottom + 8 + scrollY + "px";
+  btn.setAttribute("aria-expanded", "true");
+  box.querySelector("[data-trait-close]").focus();
+}
+function closeTrait() {
+  const box = $("#trait"); if (box.hidden) return;
+  box.hidden = true;
+  const b = document.querySelector(`.info-btn[data-info="${CSS.escape(box.dataset.for || "")}"]`);
+  if (b) { b.setAttribute("aria-expanded", "false"); b.focus({preventScroll: true}); }
+  box.dataset.for = "";
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#trait").hidden) closeTrait(); });
+
+function resetAll() {
+  matF = colorF = q = ""; filter = "전체";
+  document.querySelectorAll(".qt tr.dirty").forEach(t => t.classList.remove("dirty"));
+}
+function setTop() { document.documentElement.style.setProperty("--top", $(".top").offsetHeight + "px"); }
+addEventListener("resize", setTop);
+// 재질은 최근 많이 쓰는 순서, 같으면 가나다순
+// 선반 묶음 = '필라멘트 보유 현황.xlsx'의 묶음(PLA 줄에 F-PLA·PLA 서포트 등). 없으면 재질
+const grp = i => i.group || i.material;
+const label = i => (i.material !== grp(i) ? i.material + " " : "") + i.color_name;
+function materialOrder(list) {
+  const use = {};
+  list.forEach(i => use[grp(i)] = (use[grp(i)] || 0) + (fc(i.id).used90_g || 0));
+  return Object.keys(use).sort((a, b) => use[b] - use[a] || a.localeCompare(b, "ko"));
+}
+function groupBy(items) { const gs = {}; items.forEach(i => (gs[grp(i)] ||= []).push(i)); return gs; }
+
+function renderFilters() {
+  const c = {전체: S.items.length, 부족: 0, 없음: 0, 미입력: 0};
+  S.items.forEach(i => { if (i.status in c) c[i.status]++; });
+  $("#filters").innerHTML = Object.entries(c).filter(([k, n]) => k === "전체" || n).map(([k, n]) =>
+      `<button class="chip" aria-pressed="${filter === k}" data-f="${k}">${k}<span class="n">${n}</span></button>`).join("") +
+    `<input class="search" id="q" placeholder="재질·색상 검색" value="${esc(q)}" aria-label="재질·색상 검색">`;
+}
+function notice() {
+  const n = S.items.filter(i => i.status === "미입력").length;
+  if (READONLY || !n || view === "quick") return "";
+  return `<div class="notice"><p>재고를 아직 입력하지 않은 필라멘트가 <b>${n}개</b> 있어요. 재고를 넣어야 출력할 때마다 자동으로 빠지고, 남은 기간도 계산돼요.</p>
+    <button class="btn" data-goto="quick">빠른 입력으로 한 번에 넣기</button></div>`;
+}
+function renderShelves() {
+  const items = S.items.filter(matches);
+  if (!S.items.length) return `<div class="empty"><p>등록된 필라멘트가 없습니다.</p>${READONLY ? "" : `<button class="btn primary" onclick="openNew()">필라멘트 등록</button>`}</div>`;
+  if (!items.length) return `<div class="empty">조건에 맞는 필라멘트가 없습니다.</div>`;
+  const groups = groupBy(items), tag = READONLY ? "div" : "button";
+  return colorHead() + materialOrder(items).map(m => {
+    const list = groups[m].sort((a, b) => label(a).localeCompare(label(b), "ko"));
+    return `<section class="shelf" data-group="${esc(m)}" aria-label="${esc(m)}">
+      <div class="shelf-head"><h2>${esc(m)}</h2>${traitRows(m).length ? `<button type="button" class="info-btn" data-info="${esc(m)}"
+        aria-label="${esc(m)} 특성 보기" aria-expanded="false" aria-controls="trait">${ICON_INFO}</button>` : ""}</div>
+      <div class="rack">${list.map(i => `
+        <${tag} class="spool st-${i.status}" data-id="${i.id}" aria-label="${esc(i.material)} ${esc(i.color_name)}, ${i.status}">
+          ${spoolSVG(i)}
+          <div class="name">${esc(label(i))}${["부족","없음","미입력"].includes(i.status) ? `<span class="badge">${i.status}</span>` : ""}</div>
+          ${bar(i)}
+          <div class="meta">${metaLine(i)}</div>
+        </${tag}>`).join("")}</div>
+      <div class="plank"></div></section>`;
+  }).join("");
+}
+
+// ---------- 빠른 입력: 여러 필라멘트의 재고를 표에서 바로 저장
+function renderQuick() {
+  const items = S.items.filter(matches);
+  if (!items.length) return `<div class="empty">조건에 맞는 필라멘트가 없습니다.</div>`;
+  const groups = groupBy(items);
+  const cnt = (it, s) => it.unopened.filter(x => x === s).length;
+  const row = it => `<tr data-id="${it.id}" class="${it.status === "미입력" ? "pending" : ""}">
+    <td class="whocell"><span class="who"><span class="sw" style="background:${esc(it.color_hex)}"></span><b>${esc(label(it))}</b></span></td>
+    <td data-l="미개봉 1kg"><input type="number" min="0" name="u1000" value="${cnt(it, 1000)}" aria-label="${esc(it.material + " " + it.color_name)} 미개봉 1kg 롤"></td>
+    <td data-l="미개봉 500g"><input type="number" min="0" name="u500" value="${cnt(it, 500)}" aria-label="미개봉 500g 롤"></td>
+    <td data-l="미개봉 250g"><input type="number" min="0" name="u250" value="${cnt(it, 250)}" aria-label="미개봉 250g 롤"></td>
+    <td data-l="사용 중 롤"><select name="current_size" aria-label="사용 중인 롤 용량"><option value="">없음</option>${[1000,500,250].map(s =>
+      `<option value="${s}" ${it.current?.size === s ? "selected" : ""}>${sizeLabel(s)}</option>`).join("")}</select></td>
+    <td data-l="남은 무게(g)"><input type="number" min="0" name="current_remain" value="${it.current ? Math.round(it.current.remain) : ""}" aria-label="사용 중인 롤 남은 무게"></td>
+    <td class="use">${fc(it.id).used90_g ? perDay(fc(it.id).rate_g_day) : ""}</td>
+    <td class="act">${savedIds.has(it.id) ? `<span class="saved">저장됨 </span>` : ""}<button class="btn" data-save>저장</button></td></tr>`;
+  return colorHead() + `<section class="quick" aria-labelledby="h-q"><h2 id="h-q">재고 빠른 입력</h2>
+    <p class="sub">지금 실제로 가진 양을 넣고 줄마다 저장하세요. 사용 중인 롤은 저울로 잰 무게에서 빈 스풀 무게를 빼면 돼요. 재질은 최근 많이 쓰는 순서예요.</p>
+    <table class="qt"><thead><tr><th>색상</th><th>미개봉 1kg</th><th>500g</th><th>250g</th><th>사용 중 롤</th><th>남은 무게(g)</th><th style="text-align:right">최근 사용</th><th></th></tr></thead>
+    <tbody>${materialOrder(items).map(m => `<tr class="group" data-group="${esc(m)}"><td colspan="8">${esc(m)}</td></tr>` +
+      groups[m].sort((a, b) => (fc(b.id).used90_g || 0) - (fc(a.id).used90_g || 0) || label(a).localeCompare(label(b), "ko")).map(row).join("")).join("")}</tbody></table></section>`;
+}
+async function saveRow(tr) {
+  const v = n => tr.querySelector(`[name=${n}]`).value, it = S.items.find(i => i.id === tr.dataset.id);
+  const unopened = [1000, 500, 250].flatMap(s => Array(Math.max(0, +v("u" + s) || 0)).fill(s));
+  const size = v("current_size") ? +v("current_size") : null, remain = +v("current_remain") || 0;
+  if (size && !remain) { toast("사용 중인 롤의 남은 무게를 넣어주세요"); tr.querySelector("[name=current_remain]").focus(); return; }
+  if (size && remain > size) { toast(`남은 무게는 ${sizeLabel(size)}보다 클 수 없어요`); return; }
+  try {
+    await api("POST", `/api/items/${it.id}/stock`, {unopened, current_size: size, current_remain: remain});
+    toast(`${it.material} ${it.color_name} 재고를 저장했습니다`);
+    savedIds.add(it.id);
+    const nt = document.querySelector(`tr[data-id="${it.id}"] .act`);
+    if (nt && !nt.querySelector(".saved")) nt.insertAdjacentHTML("afterbegin", `<span class="saved">저장됨 </span>`);
+  } catch (e) { toast(e.message); }
+}
+
+function render() {
+  if (!$("#trait").hidden) { $("#trait").hidden = true; $("#trait").dataset.for = ""; }  // 다시 그리면 특성 창은 닫음
+  renderFilters();
+  setTop();
+  renderSide();
+  document.querySelectorAll("#view button").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === view));
+  const focusId = document.activeElement?.closest?.("tr[data-id]")?.dataset.id;
+  if (view === "quick" && document.querySelector(".qt tr.dirty")) return;  // 입력 중인 표는 다시 그리지 않음
+  $("#main").innerHTML = notice() + (view === "quick" && !READONLY ? renderQuick() : renderShelves());
+  if (focusId) document.querySelector(`tr[data-id="${focusId}"] input`)?.focus();
+  if (dlgItem) fillDialog(dlgItem, dlgTab);
+}
+
+// ---------- 색상 선택: 고르면 미리보기에 표시되고 [확인]을 눌러야 적용
+function colorField(hex) {
+  return `<div class="lbl full">표시 색
+    <input type="hidden" name="color_hex" value="${esc(hex)}">
+    <button type="button" class="cf-btn" data-cf aria-expanded="false">
+      <span class="sw lg" data-cf-sw style="background:${esc(hex)}"></span>
+      <span data-cf-txt>${esc(colorName(hex) || "직접 지정")} <small>${esc(hex.toUpperCase())}</small></span>
+      <span class="chg">색상 변경</span></button></div>
+    <div class="picker" hidden data-pk>
+      <div class="pk-grid" role="group" aria-label="색상">${PALETTE.map(([n, c]) =>
+        `<button type="button" class="pk-sw" data-hex="${c}" data-name="${n}" aria-pressed="false"><span class="sw" style="background:${c}"></span>${n}</button>`).join("")}</div>
+      <div class="pk-row"><span class="lbl" style="display:flex;align-items:center;gap:8px">직접 고르기 <input type="color" data-pk-custom></span>
+        <label style="display:flex;align-items:center;gap:8px">색상 코드 <input class="hex" data-pk-hex maxlength="7" placeholder="#RRGGBB"></label></div>
+      <div class="pk-now"><span class="chip-big" data-pk-prev></span><div><span class="meta">선택한 색</span><br><b data-pk-name></b> <small data-pk-code></small></div>
+        <div class="pk-act"><button type="button" class="btn" data-pk-cancel>취소</button><button type="button" class="btn primary" data-pk-ok>확인</button></div></div>
+    </div>`;
+}
+function wireColorField(form) {
+  const hidden = form.color_hex, pk = form.querySelector("[data-pk]"), btn = form.querySelector("[data-cf]");
+  let pending = {hex: hidden.value, name: colorName(hidden.value)};
+  const show = () => {
+    pk.querySelector("[data-pk-prev]").style.background = pending.hex;
+    pk.querySelector("[data-pk-name]").textContent = pending.name || "직접 지정";
+    pk.querySelector("[data-pk-code]").textContent = pending.hex.toUpperCase();
+    pk.querySelector("[data-pk-custom]").value = pending.hex;
+    pk.querySelector("[data-pk-hex]").value = pending.hex.toUpperCase();
+    pk.querySelectorAll(".pk-sw").forEach(b => b.setAttribute("aria-pressed", b.dataset.hex.toLowerCase() === pending.hex.toLowerCase()));
+  };
+  const toggle = open => { pk.hidden = !open; btn.setAttribute("aria-expanded", open); if (open) { pending = {hex: hidden.value, name: colorName(hidden.value)}; show(); } };
+  btn.onclick = () => toggle(pk.hidden);
+  pk.querySelectorAll(".pk-sw").forEach(b => b.onclick = () => { pending = {hex: b.dataset.hex, name: b.dataset.name}; show(); });
+  pk.querySelector("[data-pk-custom]").oninput = e => { pending = {hex: e.target.value, name: colorName(e.target.value)}; show(); };
+  pk.querySelector("[data-pk-hex]").onchange = e => { const v = e.target.value.trim(); if (/^#?[0-9a-f]{6}$/i.test(v)) { const h = (v[0] === "#" ? v : "#" + v).toLowerCase(); pending = {hex: h, name: colorName(h)}; } show(); };
+  pk.querySelector("[data-pk-cancel]").onclick = () => toggle(false);
+  pk.querySelector("[data-pk-ok]").onclick = () => {
+    hidden.value = pending.hex;
+    btn.querySelector("[data-cf-sw]").style.background = pending.hex;
+    btn.querySelector("[data-cf-txt]").innerHTML = `${esc(pending.name || "직접 지정")} <small>${esc(pending.hex.toUpperCase())}</small>`;
+    if (form.color_name && !form.color_name.value && pending.name) form.color_name.value = pending.name;
+    toggle(false); btn.focus();
+  };
+}
+
+// ---------- 재질 선택: 등록된 재질 목록에서 고르거나, 없으면 새로 입력
+function materialCombo(value = "") {
+  return `<label>재질<div class="combo">
+    <input name="material" value="${esc(value)}" required placeholder="선택하거나 입력" autocomplete="off"
+      role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="matList">
+    <svg class="caret" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 8l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <ul class="combo-list" id="matList" role="listbox"></ul></div></label>`;
+}
+function wireCombo(form) {
+  const box = form.querySelector(".combo"), inp = box.querySelector("input"), ul = box.querySelector("ul");
+  const counts = {};
+  S.items.forEach(i => counts[i.material] = (counts[i.material] || 0) + 1);
+  const all = Object.keys(counts).sort((a, b) => a.localeCompare(b, "ko"));
+  let opts = [], active = -1;
+  const draw = () => {
+    const v = inp.value.trim(), lv = v.toLowerCase();
+    const exact = all.some(m => m.toLowerCase() === lv);
+    const list = exact ? all : all.filter(m => !lv || m.toLowerCase().includes(lv));
+    opts = list.map(m => ({value: m, label: m, sub: `${counts[m]}색`}));
+    if (v && !exact) opts.push({value: v, label: `'${v}' 새 재질로 사용`, isNew: true});
+    if (active >= opts.length) active = opts.length - 1;
+    ul.innerHTML = opts.length ? opts.map((o, i) => `<li role="option" id="mo${i}" data-i="${i}" aria-selected="${i === active}"
+        class="${o.isNew ? "new" : ""}${o.value === v && !o.isNew ? " cur" : ""}"><span>${esc(o.label)}</span>${o.sub ? `<span class="cnt">${o.sub}</span>` : ""}</li>`).join("")
+      : `<li class="none">등록된 재질이 없습니다</li>`;
+    inp.setAttribute("aria-activedescendant", active >= 0 ? "mo" + active : "");
+    ul.querySelector('[aria-selected="true"]')?.scrollIntoView({block: "nearest"});
+  };
+  const open = () => { box.setAttribute("data-open", ""); inp.setAttribute("aria-expanded", "true"); draw(); };
+  const close = () => { box.removeAttribute("data-open"); inp.setAttribute("aria-expanded", "false"); active = -1; };
+  const pick = i => { inp.value = opts[i].value; close(); };
+  inp.addEventListener("focus", open);
+  inp.addEventListener("click", open);
+  inp.addEventListener("input", () => { active = -1; open(); });
+  inp.addEventListener("blur", () => setTimeout(close, 120));
+  inp.addEventListener("keydown", e => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault(); if (!box.hasAttribute("data-open")) open();
+      if (opts.length) active = (active + (e.key === "ArrowDown" ? 1 : -1) + opts.length) % opts.length;
+      draw();
+    } else if (e.key === "Enter" && box.hasAttribute("data-open") && active >= 0) { e.preventDefault(); pick(active); }
+    else if (e.key === "Escape" && box.hasAttribute("data-open")) { e.preventDefault(); e.stopPropagation(); close(); }
+  });
+  ul.addEventListener("mousedown", e => { const li = e.target.closest("li[data-i]"); if (li) { e.preventDefault(); pick(+li.dataset.i); } });
+}
+
+// ---------- 상세 대화상자
+let dlgItem = null, dlgTab = "purchase";
+const TABS = {purchase: "구매 추가", stock: "재고 직접 입력", use: "사용량 차감", history: "사용 기록", edit: "정보 수정"};
+function openItem(id, tab = "purchase") {
+  dlgItem = id; const it = S.items.find(i => i.id === id);
+  fillDialog(id, it.status === "미입력" ? "stock" : tab);
+  if (!$("#dlg").open) $("#dlg").showModal();
+}
+function fillDialog(id, tab) {
+  const it = S.items.find(i => i.id === id); if (!it) { $("#dlg").close(); return; }
+  dlgTab = tab;
+  const unopened = it.unopened.length ? it.unopened.map(sizeLabel).join(", ") : "없음", f = fc(id);
+  $("#dlg").innerHTML = `
+    <div class="dlg-head">${spoolSVG(it, 120)}
+      <div><h3>${esc(it.material)} ${esc(it.color_name)}</h3>
+        <div class="sub">사용 중 ${it.current ? `${g(it.current.remain)} / ${sizeLabel(it.current.size)}` : "없음"}, 미개봉 ${unopened}</div>
+        <div class="facts"><div><span>보유</span><b>${it.rolls}롤</b></div><div><span>총 남은 무게</span><b>${g(it.total_g)}</b></div>
+          <div><span>남은 기간</span><b>${f.days_left == null ? "—" : f.days_left > 365 ? "1년 이상" : `약 ${f.days_left}일`}</b></div>
+          <div><span>이번 달 사용</span><b>${g(it.used_month_g)}</b></div><div><span>최근 사용</span><b>${f.used90_g ? perDay(f.rate_g_day) : "—"}</b></div>
+          <div><span>최소 필라멘트 무게</span><b>${g(it.min_g)}</b></div></div></div>
+      <button class="x" aria-label="닫기" onclick="closeDlg()">×</button></div>
+    <div class="dlg-tabs" role="tablist">${Object.entries(TABS).map(([k, v]) => `<button class="tab" role="tab" aria-selected="${k === tab}" onclick="fillDialog('${id}','${k}')">${v}</button>`).join("")}</div>
+    <div class="dlg-body">${forms[tab](it)}<p class="err" id="err"></p></div>`;
+  const fm = $("#dlg form"); if (!fm) return;
+  fm.onsubmit = e => { e.preventDefault(); submit(tab, it, new FormData(fm)); };
+  if (tab === "edit") { wireColorField(fm); wireCombo(fm); }
+  if (tab === "purchase") { const upd = () => { const fd = new FormData(fm), p = +fd.get("unit_price"), s = +fd.get("size_g"), n = +fd.get("qty") || 0;
+      $("#calc").textContent = p ? `kg당 ${won(Math.round(p / s * 1000))}, 합계 ${won(p * n)}` : ""; }; fm.oninput = upd; upd(); }
+}
+const sizeSeg = (name, checked = 1000) => `<div class="seg" role="radiogroup">${[1000,500,250].map(s => `<label><input type="radio" name="${name}" value="${s}" ${s === checked ? "checked" : ""}><span>${sizeLabel(s)}</span></label>`).join("")}</div>`;
+const minField = v => `<label>최소 필라멘트 무게(g)<input type="number" name="min_g" min="0" step="50" value="${v}"><small>남은 무게가 이보다 적으면 '부족'으로 표시</small></label>`;
+const forms = {
+  purchase: it => `<form class="f">
+    <label>구매일<input type="date" name="date" value="${today()}" required></label>
+    <label>구매처<input name="vendor" placeholder="예: 뱀부랩 공식몰" required></label>
+    <div class="lbl full">용량${sizeSeg("size_g")}</div>
+    <label>수량(롤)<input type="number" name="qty" min="1" value="1" required></label>
+    <label>롤당 가격(원)<input type="number" name="unit_price" min="0" step="100" required></label>
+    <div class="row-end"><span class="calc" id="calc"></span><button class="btn primary">구매 추가</button></div></form>`,
+  stock: it => {
+    const cnt = s => it.unopened.filter(x => x === s).length;
+    return `<form class="f">
+    <p class="hint">지금 실제로 가지고 있는 양을 입력하세요. 사용 중인 롤은 저울로 잰 무게에서 빈 스풀 무게를 빼고 넣으면 됩니다.</p>
+    <label>미개봉 1kg 롤<input type="number" name="u1000" min="0" value="${cnt(1000)}"></label>
+    <label>미개봉 500g 롤<input type="number" name="u500" min="0" value="${cnt(500)}"></label>
+    <label>미개봉 250g 롤<input type="number" name="u250" min="0" value="${cnt(250)}"></label>
+    <span></span>
+    <label>사용 중인 롤 용량<select name="current_size"><option value="">없음</option>${[1000,500,250].map(s => `<option value="${s}" ${it.current?.size === s ? "selected" : ""}>${sizeLabel(s)}</option>`).join("")}</select></label>
+    <label>사용 중인 롤 남은 무게(g)<input type="number" name="current_remain" min="0" value="${it.current ? Math.round(it.current.remain) : ""}"></label>
+    <div class="row-end"><span></span><button class="btn primary">재고 저장</button></div></form>`; },
+  use: it => `<form class="f">
+    <p class="hint">출력 감시 프로그램이 기록한 출력은 끝나면 자동으로 빠져요. 다른 PC나 Handy에서 보낸 출력, 테스트처럼 기록에 안 잡힌 양만 여기서 빼세요.</p>
+    <label>사용량(g)<input type="number" name="grams" min="1" step="0.1" required></label>
+    <label>메모<input name="note" placeholder="예: Handy로 보낸 출력"></label>
+    <div class="row-end"><span></span><button class="btn primary">사용량 차감</button></div></form>`,
+  history: it => {
+    const logs = (S.log || []).filter(l => l.item_id === it.id);
+    if (!logs.length) return `<p class="empty" style="padding:20px 0">아직 기록이 없어요. 구매·재고 입력·출력 사용이 여기에 쌓여요.</p>`;
+    return `<ul class="hist">${logs.map(l => `<li><span class="when">${l.at.slice(5, 16).replace("T", " ")}</span>
+      <span class="k ${l.kind}">${l.ref ? "출력" : l.kind}</span><span class="nt" title="${esc(l.note)}">${esc(l.note || "")}</span>
+      <span class="g">${l.grams != null ? (l.kind === "사용" ? "−" : "+") + g(l.grams) : ""}</span></li>`).join("")}</ul>`;
+  },
+  edit: it => `<form class="f">
+    ${materialCombo(it.material)}
+    <label>색상 이름<input name="color_name" value="${esc(it.color_name)}" required></label>
+    ${colorField(it.color_hex)}
+    ${minField(it.min_g)}
+    <div class="row-end"><button type="button" class="btn danger" onclick="delItem('${it.id}')">필라멘트 삭제</button><button class="btn primary">변경 저장</button></div></form>`,
+};
+async function submit(tab, it, fd) {
+  const o = Object.fromEntries(fd);
+  try {
+    if (tab === "purchase") { await api("POST", `/api/items/${it.id}/purchase`, o); toast("구매를 추가했습니다"); }
+    if (tab === "stock") {
+      const unopened = [1000, 500, 250].flatMap(s => Array(+o["u" + s] || 0).fill(s));
+      await api("POST", `/api/items/${it.id}/stock`, {unopened, current_size: o.current_size ? +o.current_size : null, current_remain: +o.current_remain || 0});
+      toast("재고를 저장했습니다");
+    }
+    if (tab === "use") { await api("POST", `/api/items/${it.id}/use`, {grams: +o.grams, note: o.note}); toast("사용량을 차감했습니다"); }
+    if (tab === "edit") { await api("PUT", `/api/items/${it.id}`, o); toast("변경을 저장했습니다"); }
+  } catch (e) { $("#err").textContent = e.message; }
+}
+async function delItem(id) {
+  const it = S.items.find(i => i.id === id);
+  if (!confirm(`${it.material} ${it.color_name}을(를) 삭제할까요?`)) return;
+  closeDlg(); await api("DELETE", `/api/items/${id}`); toast("필라멘트를 삭제했습니다");
+}
+function closeDlg() { dlgItem = null; $("#dlg").close(); }
+$("#dlg").addEventListener("close", () => { dlgItem = null; });
+
+function openNew() {
+  dlgItem = null;
+  $("#dlg").innerHTML = `<div class="dlg-head" style="grid-template-columns:1fr auto"><div><h3>필라멘트 등록</h3><div class="sub">재질과 색상 조합마다 하나씩 등록합니다.</div></div><button class="x" aria-label="닫기" onclick="closeDlg()">×</button></div>
+    <div class="dlg-body"><form class="f">
+      ${materialCombo()}
+      <label>색상 이름<input name="color_name" required placeholder="예: 화이트"></label>
+      ${colorField("#8c9095")}
+      ${minField(300)}
+      <div class="row-end"><span></span><button class="btn primary">등록</button></div></form><p class="err" id="err"></p></div>`;
+  const fm = $("#dlg form");
+  wireColorField(fm);
+  wireCombo(fm);
+  fm.onsubmit = async e => { e.preventDefault();
+    const before = new Set(S.items.map(i => i.id));
+    try { await api("POST", "/api/items", Object.fromEntries(new FormData(fm))); }
+    catch (er) { $("#err").textContent = er.message; return; }
+    toast("필라멘트를 등록했습니다");
+    const nu = S.items.find(i => !before.has(i.id));
+    if (nu) openItem(nu.id, "stock"); else closeDlg();
+  };
+  if (!$("#dlg").open) $("#dlg").showModal();
+}
+
+// ---------- 시작
+document.addEventListener("click", e => {
+  const ib = e.target.closest(".info-btn"); if (ib) { openTrait(ib); return; }
+  if (e.target.closest("[data-trait-close]")) { closeTrait(); return; }
+  if (!e.target.closest("#trait")) closeTrait();
+  const c = e.target.closest(".chip"); if (c) { filter = c.dataset.f; render(); return; }
+  if (e.target.closest("[data-reset]")) { resetAll(); render(); scrollTo(0, 0); return; }
+  const ma = e.target.closest("[data-mat]"), co = e.target.closest("[data-color]");
+  if (ma || co) {
+    if (ma) matF = matF === ma.dataset.mat ? "" : ma.dataset.mat;  // 다시 누르면 해제
+    if (co) colorF = colorF === co.dataset.color ? "" : co.dataset.color;
+    document.querySelectorAll(".qt tr.dirty").forEach(t => t.classList.remove("dirty"));
+    render(); scrollTo(0, 0); return;
+  }
+  const v = e.target.closest("#view button, [data-goto]");
+  if (v) { view = v.dataset.v || v.dataset.goto; if (view === "quick" && filter !== "전체" && filter !== "미입력") filter = "전체"; document.querySelectorAll(".qt tr.dirty").forEach(t => t.classList.remove("dirty")); render(); scrollTo(0, 0); return; }
+  const sv = e.target.closest("[data-save]"); if (sv) { const tr = sv.closest("tr"); tr.classList.remove("dirty"); saveRow(tr); return; }
+  const s = e.target.closest("button.spool"); if (s) openItem(s.dataset.id);
+});
+document.addEventListener("input", e => {
+  if (e.target.id === "q") { q = e.target.value; document.querySelectorAll(".qt tr.dirty").forEach(t => t.classList.remove("dirty")); $("#main").innerHTML = notice() + (view === "quick" ? renderQuick() : renderShelves()); renderSide(); return; }
+  e.target.closest?.(".qt tr[data-id]")?.classList.add("dirty");
+});
+document.addEventListener("keydown", e => {  // 표에서 Enter = 그 줄 저장
+  const tr = e.target.closest?.(".qt tr[data-id]");
+  if (tr && e.key === "Enter") { e.preventDefault(); tr.classList.remove("dirty"); saveRow(tr); }
+});
+if (READONLY) {
+  $("#addItemBtn").remove(); $("#view").remove();
+  $("#nav").remove();  // 보기 전용 화면에는 다른 페이지 메뉴 없음 (출력 현황은 이 PC에서만)
+  $("#updated").textContent = "마지막 업데이트 " + SNAP.generated_at.replace("T", " ").slice(0, 16);
+  (SNAP.forecast || []).forEach(f => F[f.id] = f);
+  render();
+} else {
+  $("#addItemBtn").onclick = openNew;
+  api("GET", "/api/state").then(() => { loadForecast(); loadTraits(); }).catch(() => { $("#main").innerHTML = `<div class="empty">서버에 연결하지 못했습니다. '필라멘트 재고 대시보드.bat'이 실행 중인지 확인하세요.</div>`; });
+}
+</script>
+</body>
+</html>
